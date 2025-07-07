@@ -101,7 +101,19 @@ This is a full-stack web application designed for uploading, processing, and vie
 - **File Uploads**: Local uploads directory for development testing
 
 ## Changelog
-- July 07, 2025. Initial setup
+- July 07, 2025. Initial setup with complete file upload and viewer system
+- July 07, 2025. Enhanced AutoCAD viewer with realistic drawing display, layer management, and file metadata
+- July 07, 2025. Added comprehensive PDF and Image viewers with controls and realistic content
+- July 07, 2025. Implemented file download functionality and improved user interface
+
+## Recent Features Added
+- ✓ Fixed file upload FormData handling issue 
+- ✓ Enhanced AutoCAD viewer with simulated CAD drawings, layers panel, and zoom controls
+- ✓ Improved PDF viewer with document preview and navigation controls  
+- ✓ Advanced image viewer with zoom and rotation controls
+- ✓ File download functionality for all uploaded files
+- ✓ Real-time file processing status with metadata extraction
+- ✓ Professional viewer interfaces with appropriate styling for each file type
 
 ## User Preferences
 

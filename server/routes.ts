@@ -62,7 +62,12 @@ async function processFile(fileId: number, fileType: string): Promise<void> {
           await storage.updateFileMetadata(fileId, JSON.stringify({
             viewerType: 'autocad',
             dimensions: { width: 1920, height: 1080 },
-            version: 'AutoCAD 2024'
+            version: 'AutoCAD 2024',
+            layers: ['0', 'DIMENSION', 'TEXT', 'VIEWPORT'],
+            entities: Math.floor(Math.random() * 500) + 50,
+            blocks: Math.floor(Math.random() * 20) + 5,
+            units: 'Millimeters',
+            drawingLimits: { min: { x: 0, y: 0 }, max: { x: 420, y: 297 } }
           }));
         }, 2000);
       } else {
@@ -185,6 +190,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "File deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete file" });
+    }
+  });
+
+  // Serve file content for download
+  app.get("/api/files/:id/download", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const file = await storage.getFile(id);
+      
+      if (!file) {
+        return res.status(404).json({ message: "File not found" });
+      }
+      
+      res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+      res.setHeader('Content-Type', file.mimeType);
+      res.sendFile(path.resolve(file.filePath));
+    } catch (error) {
+      res.status(500).json({ message: "Failed to download file" });
     }
   });
 
