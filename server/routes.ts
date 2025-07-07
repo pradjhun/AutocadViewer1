@@ -5,6 +5,7 @@ import multer from "multer";
 import path from "path";
 import { insertFileSchema, FILE_TYPES, FILE_STATUS } from "@shared/schema";
 import { z } from "zod";
+import { apsService } from "./aps-service";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -45,43 +46,76 @@ function detectFileType(filename: string, mimeType: string): string {
   return FILE_TYPES.OTHER;
 }
 
-// Simulate file processing for different types
-async function processFile(fileId: number, fileType: string): Promise<void> {
-  // Simulate processing delay
-  const delay = fileType === FILE_TYPES.AUTOCAD ? 3000 : 1000;
-  
-  setTimeout(async () => {
-    try {
-      if (fileType === FILE_TYPES.AUTOCAD) {
-        // Simulate AutoCAD processing
-        await storage.updateFileStatus(fileId, FILE_STATUS.PROCESSING);
+// Process files with real APS integration for AutoCAD files
+async function processFile(fileId: number, fileType: string, filePath: string, originalName: string): Promise<void> {
+  try {
+    if (fileType === FILE_TYPES.AUTOCAD) {
+      await storage.updateFileStatus(fileId, FILE_STATUS.PROCESSING);
+      
+      // Process with APS
+      const bucketKey = `autocad-viewer-${Date.now()}`;
+      const objectKey = `${fileId}-${originalName}`;
+      
+      try {
+        // Create bucket
+        await apsService.createBucket(bucketKey);
         
-        // Simulate additional processing time
-        setTimeout(async () => {
-          await storage.updateFileStatus(fileId, FILE_STATUS.READY);
-          await storage.updateFileMetadata(fileId, JSON.stringify({
-            viewerType: 'autocad',
-            dimensions: { width: 1920, height: 1080 },
-            version: 'AutoCAD 2024',
-            layers: ['0', 'DIMENSION', 'TEXT', 'VIEWPORT'],
-            entities: Math.floor(Math.random() * 500) + 50,
-            blocks: Math.floor(Math.random() * 20) + 5,
-            units: 'Millimeters',
-            drawingLimits: { min: { x: 0, y: 0 }, max: { x: 420, y: 297 } }
-          }));
-        }, 2000);
-      } else {
-        // Other file types process faster
+        // Upload file to APS
+        const uploadResult = await apsService.uploadFile(bucketKey, objectKey, filePath);
+        const urn = apsService.encodeBase64Url(uploadResult.objectId);
+        
+        // Start translation
+        await apsService.translateFile(urn);
+        
+        // Poll for translation status
+        let attempts = 0;
+        const maxAttempts = 30; // 5 minutes max
+        
+        const checkStatus = async (): Promise<void> => {
+          attempts++;
+          const status = await apsService.getTranslationStatus(urn);
+          
+          if (status.status === 'success') {
+            await storage.updateFileStatus(fileId, FILE_STATUS.READY);
+            await storage.updateFileMetadata(fileId, JSON.stringify({
+              viewerType: 'aps',
+              urn: urn,
+              bucketKey: bucketKey,
+              objectKey: objectKey,
+              status: 'translated',
+              derivatives: status
+            }));
+          } else if (status.status === 'failed') {
+            await storage.updateFileStatus(fileId, FILE_STATUS.ERROR, 'APS translation failed');
+          } else if (attempts < maxAttempts) {
+            // Still processing, check again in 10 seconds
+            setTimeout(checkStatus, 10000);
+          } else {
+            await storage.updateFileStatus(fileId, FILE_STATUS.ERROR, 'Translation timeout');
+          }
+        };
+        
+        // Start checking status after 10 seconds
+        setTimeout(checkStatus, 10000);
+        
+      } catch (apsError: any) {
+        console.error('APS processing error:', apsError);
+        await storage.updateFileStatus(fileId, FILE_STATUS.ERROR, `APS error: ${apsError.message}`);
+      }
+    } else {
+      // Other file types use standard processing
+      setTimeout(async () => {
         await storage.updateFileStatus(fileId, FILE_STATUS.READY);
         await storage.updateFileMetadata(fileId, JSON.stringify({
           viewerType: 'standard',
           processed: true
         }));
-      }
-    } catch (error) {
-      await storage.updateFileStatus(fileId, FILE_STATUS.ERROR, 'Processing failed');
+      }, 1000);
     }
-  }, delay);
+  } catch (error: any) {
+    console.error('File processing error:', error);
+    await storage.updateFileStatus(fileId, FILE_STATUS.ERROR, `Processing failed: ${error.message}`);
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -144,7 +178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         uploadedFiles.push(savedFile);
 
         // Start processing the file asynchronously
-        processFile(savedFile.id, fileType);
+        processFile(savedFile.id, fileType, file.path, file.originalname);
       }
 
       res.json({ 
@@ -208,6 +242,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.sendFile(path.resolve(file.filePath));
     } catch (error) {
       res.status(500).json({ message: "Failed to download file" });
+    }
+  });
+
+  // Get APS viewer token
+  app.get("/api/aps/token", async (req, res) => {
+    try {
+      const token = await apsService.getViewerToken();
+      res.json({ access_token: token, expires_in: 3600 });
+    } catch (error: any) {
+      console.error('APS token error:', error);
+      res.status(500).json({ message: "Failed to get APS token", error: error.message });
     }
   });
 

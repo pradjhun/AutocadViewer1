@@ -109,9 +109,76 @@ export default function FileViewer({ file }: FileViewerProps) {
 function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
   const [showLayers, setShowLayers] = useState(false);
   const [zoom, setZoom] = useState(100);
+  const [viewerInitialized, setViewerInitialized] = useState(false);
+  const [apsToken, setApsToken] = useState<string | null>(null);
   
   const metadata = file.metadata ? JSON.parse(file.metadata) : {};
+  const isApsFile = metadata.viewerType === 'aps' && metadata.urn;
   
+  // Initialize APS Viewer for real AutoCAD files
+  useEffect(() => {
+    if (isApsFile && ready && !viewerInitialized) {
+      initializeAPSViewer();
+    }
+  }, [isApsFile, ready, viewerInitialized]);
+
+  const initializeAPSViewer = async () => {
+    try {
+      // Get APS token
+      const tokenResponse = await fetch('/api/aps/token');
+      const tokenData = await tokenResponse.json();
+      setApsToken(tokenData.access_token);
+
+      // Load Autodesk Viewer SDK
+      if (!(window as any).Autodesk) {
+        const script = document.createElement('script');
+        script.src = 'https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js';
+        script.onload = () => initViewer(tokenData.access_token);
+        document.head.appendChild(script);
+
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css';
+        document.head.appendChild(link);
+      } else {
+        initViewer(tokenData.access_token);
+      }
+    } catch (error) {
+      console.error('Failed to initialize APS viewer:', error);
+    }
+  };
+
+  const initViewer = (token: string) => {
+    const options = {
+      env: 'AutodeskProduction',
+      api: 'derivativeV2',
+      getAccessToken: (callback: (token: string, expire: number) => void) => {
+        callback(token, 3600);
+      }
+    };
+
+    (window as any).Autodesk.Viewing.Initializer(options, () => {
+      const htmlDiv = document.getElementById('aps-viewer');
+      if (htmlDiv) {
+        const viewer = new (window as any).Autodesk.Viewing.GuiViewer3D(htmlDiv);
+        const startedCode = viewer.start();
+        if (startedCode > 0) {
+          console.error('Failed to create a Viewer: WebGL not supported.');
+          return;
+        }
+
+        const documentId = 'urn:' + metadata.urn;
+        (window as any).Autodesk.Viewing.Document.load(documentId, (doc: any) => {
+          const viewables = doc.getRoot().getDefaultGeometry();
+          viewer.loadDocumentNode(doc, viewables);
+          setViewerInitialized(true);
+        }, (errorMsg: string) => {
+          console.error('Document load error:', errorMsg);
+        });
+      }
+    });
+  };
+
   if (!ready) {
     return (
       <div className="w-full h-full bg-slate-900 flex items-center justify-center">
@@ -120,7 +187,9 @@ function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
             <i className="fas fa-drafting-compass text-white text-2xl animate-spin"></i>
           </div>
           <h4 className="text-white font-semibold mb-2">AutoCAD Viewer Loading...</h4>
-          <p className="text-slate-300 text-sm">Initializing 3D rendering engine</p>
+          <p className="text-slate-300 text-sm">
+            {isApsFile ? 'Processing with Autodesk Platform Services...' : 'Initializing 3D rendering engine'}
+          </p>
           <div className="w-48 bg-slate-700 rounded-full h-2 mx-auto mt-4">
             <div className="bg-blue-600 h-2 rounded-full transition-all duration-300 animate-pulse" style={{ width: '75%' }}></div>
           </div>
@@ -129,6 +198,40 @@ function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
     );
   }
 
+  if (isApsFile) {
+    // Real APS Viewer
+    return (
+      <div className="w-full h-full bg-slate-900 relative">
+        <div id="aps-viewer" className="w-full h-full"></div>
+        
+        {/* File Info Overlay */}
+        <div className="absolute top-4 left-4 bg-black bg-opacity-80 text-white p-3 rounded-lg text-sm z-10">
+          <div className="mb-2">
+            <span className="text-blue-400 font-semibold">{file.originalName}</span>
+          </div>
+          <div className="space-y-1 text-xs">
+            <div>Status: {metadata.status || 'Processing'}</div>
+            <div>URN: {metadata.urn ? metadata.urn.substring(0, 20) + '...' : 'Processing'}</div>
+            <div>Viewer: Autodesk Platform Services</div>
+          </div>
+        </div>
+
+        {!viewerInitialized && (
+          <div className="absolute inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center">
+            <div className="text-center text-white">
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="fas fa-drafting-compass text-white text-2xl animate-spin"></i>
+              </div>
+              <h4 className="font-semibold mb-2">Loading Autodesk Viewer...</h4>
+              <p className="text-sm">Initializing real CAD file viewer</p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Fallback simulated viewer
   return (
     <div className="w-full h-full bg-slate-900 relative overflow-hidden">
       {/* Main Drawing Canvas */}

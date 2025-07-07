@@ -114,6 +114,9 @@ This is a full-stack web application designed for uploading, processing, and vie
 - ✓ File download functionality for all uploaded files
 - ✓ Real-time file processing status with metadata extraction
 - ✓ Professional viewer interfaces with appropriate styling for each file type
+- ✓ Integrated real Autodesk Platform Services (APS) for actual AutoCAD file viewing
+- ✓ Added APS authentication and file processing pipeline
+- ✓ Real AutoCAD file translation and viewer initialization
 
 ## User Preferences
 
