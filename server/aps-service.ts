@@ -1,6 +1,7 @@
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
+import crypto from 'crypto';
 
 export interface APSAuth {
   access_token: string;
@@ -119,22 +120,66 @@ export class APSService {
 
   async uploadFile(bucketKey: string, objectKey: string, filePath: string): Promise<APSUploadResult> {
     const auth = await this.authenticate();
+    const stats = fs.statSync(filePath);
+    const fileSize = stats.size;
     
-    const formData = new FormData();
-    formData.append('file', fs.createReadStream(filePath));
-
-    const response = await axios.put(
-      `${this.baseUrl}/oss/v2/buckets/${bucketKey}/objects/${objectKey}`,
-      formData,
+    // Use Direct-to-S3 upload approach
+    // Step 1: Get signed S3 URLs
+    const response = await axios.get(
+      `${this.baseUrl}/oss/v2/buckets/${bucketKey}/objects/${objectKey}/signeds3upload`,
       {
+        params: {
+          firstPart: 1,
+          parts: 1 // Single part upload for simplicity
+        },
         headers: {
-          'Authorization': `Bearer ${auth.access_token}`,
-          ...formData.getHeaders()
+          'Authorization': `Bearer ${auth.access_token}`
         }
       }
     );
 
-    return response.data;
+    const uploadData = response.data;
+    const uploadKey = uploadData.uploadKey;
+    const urls = uploadData.urls;
+
+    // Step 2: Upload file to S3 using the signed URL
+    const fileBuffer = fs.readFileSync(filePath);
+    
+    await axios.put(urls[0], fileBuffer, {
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      }
+    });
+
+    // Step 3: Finalize the upload
+    const finalizeResponse = await axios.post(
+      `${this.baseUrl}/oss/v2/buckets/${bucketKey}/objects/${objectKey}/signeds3upload`,
+      {
+        uploadKey: uploadKey,
+        parts: [
+          {
+            PartNumber: 1,
+            ETag: '"' + crypto.createHash('md5').update(fileBuffer).digest('hex') + '"'
+          }
+        ]
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${auth.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // Return standardized result
+    return {
+      bucketKey: bucketKey,
+      objectId: `urn:adsk.objects:os.object:${bucketKey}/${objectKey}`,
+      objectKey: objectKey,
+      size: fileSize,
+      contentType: 'application/octet-stream',
+      location: finalizeResponse.data.location || `${this.baseUrl}/oss/v2/buckets/${bucketKey}/objects/${objectKey}`
+    };
   }
 
   async translateFile(urn: string): Promise<APSJob> {
