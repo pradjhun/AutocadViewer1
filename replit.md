@@ -117,6 +117,8 @@ This is a full-stack web application designed for uploading, processing, and vie
 - ✓ Integrated real Autodesk Platform Services (APS) for actual AutoCAD file viewing
 - ✓ Added APS authentication and file processing pipeline
 - ✓ Real AutoCAD file translation and viewer initialization
+- ✓ Fixed APS API deprecation issue by implementing Direct-to-S3 upload
+- ✓ Resolved viewer instance reuse issue - each file now displays correctly
 
 ## User Preferences
 

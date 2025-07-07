@@ -111,16 +111,32 @@ function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
   const [zoom, setZoom] = useState(100);
   const [viewerInitialized, setViewerInitialized] = useState(false);
   const [apsToken, setApsToken] = useState<string | null>(null);
+  const [currentViewer, setCurrentViewer] = useState<any>(null);
   
   const metadata = file.metadata ? JSON.parse(file.metadata) : {};
   const isApsFile = metadata.viewerType === 'aps' && metadata.urn;
   
+  // Reset viewer when file changes
+  useEffect(() => {
+    if (currentViewer) {
+      currentViewer.finish();
+      setCurrentViewer(null);
+      setViewerInitialized(false);
+      
+      // Clear the viewer container
+      const htmlDiv = document.getElementById('aps-viewer');
+      if (htmlDiv) {
+        htmlDiv.innerHTML = '';
+      }
+    }
+  }, [file.id]); // Reset when file changes
+  
   // Initialize APS Viewer for real AutoCAD files
   useEffect(() => {
-    if (isApsFile && ready && !viewerInitialized) {
+    if (isApsFile && ready && !viewerInitialized && !currentViewer) {
       initializeAPSViewer();
     }
-  }, [isApsFile, ready, viewerInitialized]);
+  }, [isApsFile, ready, viewerInitialized, currentViewer, file.id]);
 
   const initializeAPSViewer = async () => {
     try {
@@ -160,6 +176,9 @@ function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
     (window as any).Autodesk.Viewing.Initializer(options, () => {
       const htmlDiv = document.getElementById('aps-viewer');
       if (htmlDiv) {
+        // Clear any existing content
+        htmlDiv.innerHTML = '';
+        
         const viewer = new (window as any).Autodesk.Viewing.GuiViewer3D(htmlDiv);
         const startedCode = viewer.start();
         if (startedCode > 0) {
@@ -167,13 +186,19 @@ function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
           return;
         }
 
+        // Store the viewer instance
+        setCurrentViewer(viewer);
+
         const documentId = 'urn:' + metadata.urn;
+        console.log('Loading document with URN:', documentId);
+        
         (window as any).Autodesk.Viewing.Document.load(documentId, (doc: any) => {
           const viewables = doc.getRoot().getDefaultGeometry();
           viewer.loadDocumentNode(doc, viewables);
           setViewerInitialized(true);
+          console.log('Successfully loaded document:', file.originalName);
         }, (errorMsg: string) => {
-          console.error('Document load error:', errorMsg);
+          console.error('Document load error for', file.originalName, ':', errorMsg);
         });
       }
     });
@@ -202,7 +227,11 @@ function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
     // Real APS Viewer
     return (
       <div className="w-full h-full bg-slate-900 relative">
-        <div id="aps-viewer" className="w-full h-full"></div>
+        <div 
+          id="aps-viewer" 
+          key={file.id} 
+          className="w-full h-full"
+        ></div>
         
         {/* File Info Overlay */}
         <div className="absolute top-4 left-4 bg-black bg-opacity-80 text-white p-3 rounded-lg text-sm z-10">
