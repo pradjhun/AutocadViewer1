@@ -119,6 +119,7 @@ This is a full-stack web application designed for uploading, processing, and vie
 - ✓ Real AutoCAD file translation and viewer initialization
 - ✓ Fixed APS API deprecation issue by implementing Direct-to-S3 upload
 - ✓ Resolved viewer instance reuse issue - each file now displays correctly
+- ✓ Added AutoCAD Web Editor integration - users can now edit files directly in browser
 
 ## User Preferences
 

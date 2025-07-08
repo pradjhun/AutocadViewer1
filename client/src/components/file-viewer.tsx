@@ -204,6 +204,12 @@ function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
     });
   };
 
+  const openInWebEditor = (urn: string) => {
+    // Open AutoCAD Web Editor with the file
+    const editorUrl = `https://web.autocad.com/edit?urn=${encodeURIComponent('urn:' + urn)}`;
+    window.open(editorUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+  };
+
   if (!ready) {
     return (
       <div className="w-full h-full bg-slate-900 flex items-center justify-center">
@@ -244,6 +250,22 @@ function AutoCADViewer({ file, ready }: { file: File; ready: boolean }) {
             <div>Viewer: Autodesk Platform Services</div>
           </div>
         </div>
+
+        {/* AutoCAD Web Editor Button */}
+        {viewerInitialized && metadata.urn && (
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={() => openInWebEditor(metadata.urn)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-lg"
+              title="Open in AutoCAD Web Editor"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit in AutoCAD Web
+            </button>
+          </div>
+        )}
 
         {!viewerInitialized && (
           <div className="absolute inset-0 bg-slate-900 bg-opacity-50 flex items-center justify-center">
